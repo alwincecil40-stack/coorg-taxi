@@ -61,134 +61,212 @@
   </main>
 
 <script>
-/*
-  COORG TAXI SETUP
-  1. Put your restricted Geoapify API key in GEOAPIFY_API_KEY.
-  2. Keep this key restricted to the final website origin/referrer in Geoapify.
-  3. Tally prefill parameter names must match the actual Tally fields.
-     Replace PICKUP_PARAM and DROP_PARAM if your Tally form uses different
-     prefill field identifiers.
-*/
-
 const GEOAPIFY_API_KEY = "c6fb3cadb2c241eaa759d9a113917644";
 const TALLY_URL = "https://tally.so/r/2E080p";
 
-/*
-  These are intentionally separate so we can verify Tally's exact prefill
-  syntax before you publish. Do not publish until they are confirmed.
-*/
 const PICKUP_PARAM = "pickup_location";
 const DROP_PARAM = "drop_location";
 
-const debounce = (fn, delay=350) => {
-  let t;
-  return (...args) => { clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+const debounce = (fn, delay = 350) => {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
 };
 
 function setupAutocomplete(inputId, boxId, onSelect) {
   const input = document.getElementById(inputId);
   const box = document.getElementById(boxId);
 
-  const close = () => { box.style.display = "none"; box.innerHTML = ""; };
+  let requestNumber = 0;
+
+  const close = () => {
+    box.style.display = "none";
+    box.innerHTML = "";
+  };
 
   async function search() {
     const text = input.value.trim();
-    if (text.length < 3) { close(); return; }
+    const thisRequest = ++requestNumber;
 
-    if (GEOAPIFY_API_KEY.includes("PASTE_")) {
-      box.innerHTML = '<div class="suggestion">Geoapify API key not configured yet.</div>';
-      box.style.display = "block";
+    if (text.length < 3) {
+      close();
       return;
     }
 
     try {
-      const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
+      box.innerHTML =
+        '<div class="suggestion">Searching locations...</div>';
+      box.style.display = "block";
+
+      const url = new URL(
+        "https://api.geoapify.com/v1/geocode/autocomplete"
+      );
+
       url.searchParams.set("text", text);
       url.searchParams.set("limit", "6");
       url.searchParams.set("filter", "countrycode:in");
       url.searchParams.set("apiKey", GEOAPIFY_API_KEY);
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Location search failed");
-      const data = await res.json();
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error("Location search failed");
+      }
+
+      const data = await response.json();
+
+      if (thisRequest !== requestNumber) {
+        return;
+      }
 
       box.innerHTML = "";
+
       const features = data.features || [];
+
       if (!features.length) {
-        box.innerHTML = '<div class="suggestion">No matching place found.</div>';
-      } else {
-        features.forEach(feature => {
-          const p = feature.properties || {};
-          const label = p.formatted || p.address_line1 || p.name || "Selected place";
-          const item = document.createElement("div");
-          item.className = "suggestion";
-          item.textContent = label;
-          item.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-
-  input.value = label;
-
-  onSelect({
-    label,
-    lat: p.lat ?? null,
-    lon: p.lon ?? null,
-    placeId: p.place_id ?? null
-  });
-
-  close();
-});
-          box.appendChild(item);
-        });
+        box.innerHTML =
+          '<div class="suggestion">No matching place found.</div>';
+        box.style.display = "block";
+        return;
       }
+
+      features.forEach((feature) => {
+        const p = feature.properties || {};
+
+        const label =
+          p.formatted ||
+          p.address_line1 ||
+          p.name ||
+          "Selected place";
+
+        const item = document.createElement("div");
+
+        item.className = "suggestion";
+        item.textContent = label;
+
+        const selectPlace = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          input.value = label;
+
+          input.dataset.selectedValue = label;
+
+          onSelect({
+            label: label,
+            lat: p.lat ?? null,
+            lon: p.lon ?? null,
+            placeId: p.place_id ?? null
+          });
+
+          close();
+        };
+
+        item.addEventListener("pointerdown", selectPlace);
+        item.addEventListener("touchstart", selectPlace, {
+          passive: false
+        });
+
+        box.appendChild(item);
+      });
+
       box.style.display = "block";
-    } catch (e) {
-      box.innerHTML = '<div class="suggestion">Could not load suggestions. Please try again.</div>';
+
+    } catch (error) {
+      if (thisRequest !== requestNumber) {
+        return;
+      }
+
+      box.innerHTML =
+        '<div class="suggestion">Could not load suggestions. Please try again.</div>';
+
       box.style.display = "block";
     }
   }
 
-  input.addEventListener("input", debounce(search));
-  input.addEventListener("focus", () => { if (input.value.trim().length >= 3) search(); });
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(`#${inputId}`) && !e.target.closest(`#${boxId}`)) close();
+  const debouncedSearch = debounce(search);
+
+  input.addEventListener("input", () => {
+    input.dataset.selectedValue = "";
+    onSelect(null);
+    debouncedSearch();
+  });
+
+  input.addEventListener("focus", () => {
+    if (input.value.trim().length >= 3) {
+      search();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (
+      !event.target.closest(`#${inputId}`) &&
+      !event.target.closest(`#${boxId}`)
+    ) {
+      close();
+    }
   });
 }
 
 let selectedPickup = null;
 let selectedDrop = null;
 
-setupAutocomplete("pickup", "pickupSuggestions", v => selectedPickup = v);
-setupAutocomplete("drop", "dropSuggestions", v => selectedDrop = v);
-
-document.getElementById("continueBtn").addEventListener("click", () => {
-  const error = document.getElementById("error");
-  const ok = document.getElementById("ok");
-  error.style.display = "none";
-  ok.style.display = "none";
-
-  if (!selectedPickup) {
-    error.textContent = "Please select a pickup / starting location from the suggestions.";
-    error.style.display = "block";
-    return;
+setupAutocomplete(
+  "pickup",
+  "pickupSuggestions",
+  (value) => {
+    selectedPickup = value;
   }
-  if (!selectedDrop) {
-    error.textContent = "Please select a drop / destination from the suggestions.";
-    error.style.display = "block";
-    return;
+);
+
+setupAutocomplete(
+  "drop",
+  "dropSuggestions",
+  (value) => {
+    selectedDrop = value;
   }
+);
 
-  /*
-    Temporary URL construction. Once Tally's exact prefill parameter names
-    are confirmed, this will pass the selected values into your form.
-  */
-  const url = new URL(TALLY_URL);
-  url.searchParams.set(PICKUP_PARAM, selectedPickup.label);
-  url.searchParams.set(DROP_PARAM, selectedDrop.label);
+document
+  .getElementById("continueBtn")
+  .addEventListener("click", () => {
 
-  ok.style.display = "block";
-  window.location.href = url.toString();
-});
+    const error = document.getElementById("error");
+    const ok = document.getElementById("ok");
+
+    error.style.display = "none";
+    ok.style.display = "none";
+
+    if (!selectedPickup || !selectedPickup.label) {
+      error.textContent =
+        "Please select a pickup / starting location from the suggestions.";
+
+      error.style.display = "block";
+      return;
+    }
+
+    if (!selectedDrop || !selectedDrop.label) {
+      error.textContent =
+        "Please select a drop / destination from the suggestions.";
+
+      error.style.display = "block";
+      return;
+    }
+
+    const pickupValue = selectedPickup.label;
+    const dropValue = selectedDrop.label;
+
+    const url = new URL(TALLY_URL);
+
+    url.searchParams.set(PICKUP_PARAM, pickupValue);
+    url.searchParams.set(DROP_PARAM, dropValue);
+
+    ok.style.display = "block";
+
+    window.location.href = url.toString();
+  });
 </script>
 </body>
 </html>
