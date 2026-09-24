@@ -60,6 +60,7 @@
     </section>
   </main>
 
+
 <script>
 const GEOAPIFY_API_KEY = "c6fb3cadb2c241eaa759d9a113917644";
 const TALLY_URL = "https://tally.so/r/2E080p";
@@ -69,11 +70,13 @@ const DROP_PARAM = "drop_location";
 
 const debounce = (fn, delay = 350) => {
   let timer;
+
   return (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
 };
+
 
 function setupAutocomplete(inputId, boxId, onSelect) {
   const input = document.getElementById(inputId);
@@ -85,6 +88,7 @@ function setupAutocomplete(inputId, boxId, onSelect) {
     box.style.display = "none";
     box.innerHTML = "";
   };
+
 
   async function search() {
     const text = input.value.trim();
@@ -98,7 +102,9 @@ function setupAutocomplete(inputId, boxId, onSelect) {
     try {
       box.innerHTML =
         '<div class="suggestion">Searching locations...</div>';
+
       box.style.display = "block";
+
 
       const url = new URL(
         "https://api.geoapify.com/v1/geocode/autocomplete"
@@ -109,6 +115,7 @@ function setupAutocomplete(inputId, boxId, onSelect) {
       url.searchParams.set("filter", "countrycode:in");
       url.searchParams.set("apiKey", GEOAPIFY_API_KEY);
 
+
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -117,20 +124,25 @@ function setupAutocomplete(inputId, boxId, onSelect) {
 
       const data = await response.json();
 
+
       if (thisRequest !== requestNumber) {
         return;
       }
+
 
       box.innerHTML = "";
 
       const features = data.features || [];
 
+
       if (!features.length) {
         box.innerHTML =
           '<div class="suggestion">No matching place found.</div>';
+
         box.style.display = "block";
         return;
       }
+
 
       features.forEach((feature) => {
         const p = feature.properties || {};
@@ -141,18 +153,28 @@ function setupAutocomplete(inputId, boxId, onSelect) {
           p.name ||
           "Selected place";
 
+
         const item = document.createElement("div");
 
         item.className = "suggestion";
         item.textContent = label;
 
+
         const selectPlace = (event) => {
           event.preventDefault();
           event.stopPropagation();
 
+          /*
+           * Put the FULL selected location into the actual
+           * input box first.
+           */
           input.value = label;
 
+          /*
+           * Remember that this value came from a suggestion.
+           */
           input.dataset.selectedValue = label;
+
 
           onSelect({
             label: label,
@@ -161,23 +183,30 @@ function setupAutocomplete(inputId, boxId, onSelect) {
             placeId: p.place_id ?? null
           });
 
+
           close();
         };
 
+
+        /*
+         * pointerdown works for Android touch as well as
+         * mouse/trackpad.
+         */
         item.addEventListener("pointerdown", selectPlace);
-        item.addEventListener("touchstart", selectPlace, {
-          passive: false
-        });
+
 
         box.appendChild(item);
       });
 
+
       box.style.display = "block";
 
     } catch (error) {
+
       if (thisRequest !== requestNumber) {
         return;
       }
+
 
       box.innerHTML =
         '<div class="suggestion">Could not load suggestions. Please try again.</div>';
@@ -186,13 +215,22 @@ function setupAutocomplete(inputId, boxId, onSelect) {
     }
   }
 
+
   const debouncedSearch = debounce(search);
 
+
+  /*
+   * If the customer starts typing again, the previous
+   * selected location is no longer considered selected.
+   */
   input.addEventListener("input", () => {
     input.dataset.selectedValue = "";
+
     onSelect(null);
+
     debouncedSearch();
   });
+
 
   input.addEventListener("focus", () => {
     if (input.value.trim().length >= 3) {
@@ -200,18 +238,25 @@ function setupAutocomplete(inputId, boxId, onSelect) {
     }
   });
 
+
   document.addEventListener("click", (event) => {
+
     if (
       !event.target.closest(`#${inputId}`) &&
       !event.target.closest(`#${boxId}`)
     ) {
       close();
     }
+
   });
 }
 
+
+
 let selectedPickup = null;
 let selectedDrop = null;
+
+
 
 setupAutocomplete(
   "pickup",
@@ -221,6 +266,8 @@ setupAutocomplete(
   }
 );
 
+
+
 setupAutocomplete(
   "drop",
   "dropSuggestions",
@@ -229,6 +276,8 @@ setupAutocomplete(
   }
 );
 
+
+
 document
   .getElementById("continueBtn")
   .addEventListener("click", () => {
@@ -236,10 +285,17 @@ document
     const error = document.getElementById("error");
     const ok = document.getElementById("ok");
 
+
     error.style.display = "none";
     ok.style.display = "none";
 
+
+    /*
+     * First make sure the customer selected both
+     * locations from the suggestions.
+     */
     if (!selectedPickup || !selectedPickup.label) {
+
       error.textContent =
         "Please select a pickup / starting location from the suggestions.";
 
@@ -247,7 +303,9 @@ document
       return;
     }
 
+
     if (!selectedDrop || !selectedDrop.label) {
+
       error.textContent =
         "Please select a drop / destination from the suggestions.";
 
@@ -255,18 +313,59 @@ document
       return;
     }
 
-    const pickupValue = selectedPickup.label;
-    const dropValue = selectedDrop.label;
 
+    /*
+     * IMPORTANT:
+     *
+     * Read the value directly from the visible input boxes.
+     *
+     * This prevents Android/mobile browsers from using
+     * an old autocomplete value such as "mad".
+     */
+    const pickupValue =
+      document.getElementById("pickup").value.trim();
+
+    const dropValue =
+      document.getElementById("drop").value.trim();
+
+
+    if (!pickupValue || !dropValue) {
+
+      error.textContent =
+        "Please select both pickup and drop locations.";
+
+      error.style.display = "block";
+      return;
+    }
+
+
+    /*
+     * Send the exact visible selected locations to Tally.
+     */
     const url = new URL(TALLY_URL);
 
-    url.searchParams.set(PICKUP_PARAM, pickupValue);
-    url.searchParams.set(DROP_PARAM, dropValue);
+    url.searchParams.set(
+      PICKUP_PARAM,
+      pickupValue
+    );
+
+    url.searchParams.set(
+      DROP_PARAM,
+      dropValue
+    );
+
 
     ok.style.display = "block";
 
-    window.location.href = url.toString();
+
+    /*
+     * Navigate to Tally.
+     */
+    window.location.assign(url.href);
+
   });
 </script>
+    
+
 </body>
 </html>
