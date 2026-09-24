@@ -123,16 +123,21 @@ function setupAutocomplete(inputId, boxId, onSelect) {
           const item = document.createElement("div");
           item.className = "suggestion";
           item.textContent = label;
-          item.addEventListener("click", () => {
-            input.value = label;
-            onSelect({
-              label,
-              lat: p.lat ?? null,
-              lon: p.lon ?? null,
-              placeId: p.place_id ?? null
-            });
-            close();
-          });
+          item.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+
+  input.value = label;
+
+  onSelect({
+    label,
+    lat: p.lat ?? null,
+    lon: p.lon ?? null,
+    placeId: p.place_id ?? null
+  });
+
+  close();
+});
           box.appendChild(item);
         });
       }
