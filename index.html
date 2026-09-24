@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coorg Taxi – Trip Planner</title>
+  <meta name="description" content="Coorg Taxi trip planner with location autocomplete.">
+  <style>
+    :root { --accent:#166534; --border:#d1d5db; --muted:#6b7280; --bg:#f7f7f5; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:#111827; }
+    .wrap { max-width:760px; margin:0 auto; padding:28px 16px 48px; }
+    .card { background:#fff; border-radius:18px; padding:24px; box-shadow:0 8px 30px rgba(0,0,0,.07); }
+    h1 { margin:0 0 8px; font-size:28px; }
+    .sub { margin:0 0 24px; color:var(--muted); }
+    label { display:block; font-weight:650; margin:16px 0 7px; }
+    input, select { width:100%; padding:13px 14px; border:1px solid var(--border); border-radius:10px; font-size:16px; background:#fff; }
+    .loc { position:relative; }
+    .suggestions { position:absolute; z-index:20; left:0; right:0; top:100%; margin-top:4px; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,.12); overflow:hidden; display:none; }
+    .suggestion { padding:12px 14px; cursor:pointer; border-bottom:1px solid #eee; }
+    .suggestion:last-child { border-bottom:0; }
+    .suggestion:hover { background:#f3f4f6; }
+    .main { margin-top:22px; width:100%; border:0; border-radius:11px; padding:14px 18px; font-size:17px; font-weight:700; color:#fff; background:var(--accent); cursor:pointer; }
+    .main:disabled { opacity:.55; cursor:not-allowed; }
+    .notice { margin-top:14px; font-size:13px; color:var(--muted); line-height:1.5; }
+    .error { margin-top:12px; color:#b91c1c; font-size:14px; display:none; }
+    .ok { margin-top:12px; color:#166534; font-size:14px; display:none; }
+    .small { font-size:12px; color:var(--muted); margin-top:7px; }
+    @media (max-width:520px){ .card{padding:18px;} h1{font-size:24px;} }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Coorg Taxi – Trip Planner</h1>
+      <p class="sub">Select your locations and continue to our taxi enquiry form.</p>
+
+      <label for="service">Service</label>
+      <select id="service">
+        <option value="Pickup / Drop">Pickup / Drop</option>
+        <option value="Sightseeing">Sightseeing</option>
+        <option value="Airport Transfer">Airport Transfer</option>
+        <option value="Full Package">Full Package</option>
+      </select>
+
+      <label for="pickup">Pickup / Starting Location</label>
+      <div class="loc">
+        <input id="pickup" autocomplete="off" placeholder="Type a place, hotel, landmark or address">
+        <div id="pickupSuggestions" class="suggestions"></div>
+      </div>
+
+      <label for="drop">Drop / Destination</label>
+      <div class="loc">
+        <input id="drop" autocomplete="off" placeholder="Type a place, hotel, landmark or address">
+        <div id="dropSuggestions" class="suggestions"></div>
+      </div>
+
+      <button id="continueBtn" class="main">Continue to Enquiry Form</button>
+      <div id="error" class="error"></div>
+      <div id="ok" class="ok">Location selected. Opening the enquiry form…</div>
+
+      <p class="notice">
+        Location suggestions are powered by Geoapify. The final fare is confirmed by Coorg Taxi.
+      </p>
+      <p class="small">Setup note: replace the placeholder API key and Tally prefill mapping before publishing.</p>
+    </section>
+  </main>
+
+<script>
+/*
+  COORG TAXI SETUP
+  1. Put your restricted Geoapify API key in GEOAPIFY_API_KEY.
+  2. Keep this key restricted to the final website origin/referrer in Geoapify.
+  3. Tally prefill parameter names must match the actual Tally fields.
+     Replace PICKUP_PARAM and DROP_PARAM if your Tally form uses different
+     prefill field identifiers.
+*/
+
+const GEOAPIFY_API_KEY = "PASTE_YOUR_GEOAPIFY_API_KEY_HERE";
+const TALLY_URL = "https://tally.so/r/2E080p";
+
+/*
+  These are intentionally separate so we can verify Tally's exact prefill
+  syntax before you publish. Do not publish until they are confirmed.
+*/
+const PICKUP_PARAM = "Pickup location";
+const DROP_PARAM = "Drop location";
+
+const debounce = (fn, delay=350) => {
+  let t;
+  return (...args) => { clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+};
+
+function setupAutocomplete(inputId, boxId, onSelect) {
+  const input = document.getElementById(inputId);
+  const box = document.getElementById(boxId);
+
+  const close = () => { box.style.display = "none"; box.innerHTML = ""; };
+
+  async function search() {
+    const text = input.value.trim();
+    if (text.length < 3) { close(); return; }
+
+    if (GEOAPIFY_API_KEY.includes("PASTE_")) {
+      box.innerHTML = '<div class="suggestion">Geoapify API key not configured yet.</div>';
+      box.style.display = "block";
+      return;
+    }
+
+    try {
+      const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
+      url.searchParams.set("text", text);
+      url.searchParams.set("limit", "6");
+      url.searchParams.set("filter", "countrycode:in");
+      url.searchParams.set("apiKey", GEOAPIFY_API_KEY);
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Location search failed");
+      const data = await res.json();
+
+      box.innerHTML = "";
+      const features = data.features || [];
+      if (!features.length) {
+        box.innerHTML = '<div class="suggestion">No matching place found.</div>';
+      } else {
+        features.forEach(feature => {
+          const p = feature.properties || {};
+          const label = p.formatted || p.address_line1 || p.name || "Selected place";
+          const item = document.createElement("div");
+          item.className = "suggestion";
+          item.textContent = label;
+          item.addEventListener("click", () => {
+            input.value = label;
+            onSelect({
+              label,
+              lat: p.lat ?? null,
+              lon: p.lon ?? null,
+              placeId: p.place_id ?? null
+            });
+            close();
+          });
+          box.appendChild(item);
+        });
+      }
+      box.style.display = "block";
+    } catch (e) {
+      box.innerHTML = '<div class="suggestion">Could not load suggestions. Please try again.</div>';
+      box.style.display = "block";
+    }
+  }
+
+  input.addEventListener("input", debounce(search));
+  input.addEventListener("focus", () => { if (input.value.trim().length >= 3) search(); });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(`#${inputId}`) && !e.target.closest(`#${boxId}`)) close();
+  });
+}
+
+let selectedPickup = null;
+let selectedDrop = null;
+
+setupAutocomplete("pickup", "pickupSuggestions", v => selectedPickup = v);
+setupAutocomplete("drop", "dropSuggestions", v => selectedDrop = v);
+
+document.getElementById("continueBtn").addEventListener("click", () => {
+  const error = document.getElementById("error");
+  const ok = document.getElementById("ok");
+  error.style.display = "none";
+  ok.style.display = "none";
+
+  if (!selectedPickup) {
+    error.textContent = "Please select a pickup / starting location from the suggestions.";
+    error.style.display = "block";
+    return;
+  }
+  if (!selectedDrop) {
+    error.textContent = "Please select a drop / destination from the suggestions.";
+    error.style.display = "block";
+    return;
+  }
+
+  /*
+    Temporary URL construction. Once Tally's exact prefill parameter names
+    are confirmed, this will pass the selected values into your form.
+  */
+  const url = new URL(TALLY_URL);
+  url.searchParams.set(PICKUP_PARAM, selectedPickup.label);
+  url.searchParams.set(DROP_PARAM, selectedDrop.label);
+
+  ok.style.display = "block";
+  window.location.href = url.toString();
+});
+</script>
+</body>
+</html>
