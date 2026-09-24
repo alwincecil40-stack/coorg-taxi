@@ -35,13 +35,7 @@
       <h1>Coorg Taxi – Trip Planner</h1>
       <p class="sub">Select your locations and continue to our taxi enquiry form.</p>
 
-      <label for="service">Service</label>
-      <select id="service">
-        <option value="Pickup / Drop">Pickup / Drop</option>
-        <option value="Sightseeing">Sightseeing</option>
-        <option value="Airport Transfer">Airport Transfer</option>
-        <option value="Full Package">Full Package</option>
-      </select>
+      
 
       <label for="pickup">Pickup / Starting Location</label>
       <div class="loc">
@@ -76,15 +70,15 @@
      prefill field identifiers.
 */
 
-const GEOAPIFY_API_KEY = "PASTE_YOUR_GEOAPIFY_API_KEY_HERE";
+const GEOAPIFY_API_KEY = "c6fb3cadb2c241eaa759d9a113917644";
 const TALLY_URL = "https://tally.so/r/2E080p";
 
 /*
   These are intentionally separate so we can verify Tally's exact prefill
   syntax before you publish. Do not publish until they are confirmed.
 */
-const PICKUP_PARAM = "Pickup location";
-const DROP_PARAM = "Drop location";
+const PICKUP_PARAM = "pickup_location";
+const DROP_PARAM = "drop_location";
 
 const debounce = (fn, delay=350) => {
   let t;
