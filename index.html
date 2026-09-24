@@ -161,31 +161,38 @@ function setupAutocomplete(inputId, boxId, onSelect) {
 
 
         const selectPlace = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
+  event.preventDefault();
+  event.stopPropagation();
 
-          /*
-           * Put the FULL selected location into the actual
-           * input box first.
-           */
-          input.value = label;
+  const selectedLabel =
+    String(
+      p.formatted ||
+      p.address_line1 ||
+      p.name ||
+      label
+    ).trim();
 
-          /*
-           * Remember that this value came from a suggestion.
-           */
-          input.dataset.selectedValue = label;
+  input.value = selectedLabel;
 
+  input.dataset.selectedValue = selectedLabel;
 
-          onSelect({
-            label: label,
-            lat: p.lat ?? null,
-            lon: p.lon ?? null,
-            placeId: p.place_id ?? null
-          });
+  onSelect({
+    label: selectedLabel,
+    lat: p.lat ?? null,
+    lon: p.lon ?? null,
+    placeId: p.place_id ?? null
+  });
 
+  /*
+   * Force the browser to keep the selected value
+   * in the actual input element.
+   */
+  input.dispatchEvent(
+    new Event("change", { bubbles: true })
+  );
 
-          close();
-        };
+  close();
+};
 
 
         /*
